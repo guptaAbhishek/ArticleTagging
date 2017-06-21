@@ -11,6 +11,10 @@ import unicodedata
 
 from gensim.models import Word2Vec
 from gensim.models.word2vec import LineSentence
+from gensim.models import Phrases
+from gensim.models.phrases import Phraser
+
+
 
 class MLStripper(HTMLParser):
     def __init__(self):
@@ -58,7 +62,6 @@ def is_adjective(tag):
 
 
 def penn_to_wn(tag):
-    tag = tag[1]
     if is_adjective(tag):
         return wn.ADJ
     elif is_noun(tag):
@@ -91,6 +94,14 @@ def extract_ner(text):
     return continuous_chunk
 
 
+def getSent(lemma_words):
+    space = " "
+    r =""
+    for w in lemma_words:
+        r = space.join(i for i in lemma_words)
+
+    return r
+
 def main():
     import nltk
     from pymongo import MongoClient
@@ -111,26 +122,46 @@ def main():
     client = MongoClient('mongodb://10.1.2.83:27017')
     db = client.db_htfeedengine
     collection = db.article
+    real_tags = []
+    list_of_sent = []
+
+    outputFile = sys.argv[1]
+    i = 0
+    space = ""
+    c = 0
+    output = open(outputFile, 'w')
+
+    sentences = []
+    bigram = Phrases()
 
     for article in collection.find({},{"textStrip":1,"_id":0}):
-        textStripWithHTML = article['textStrip']
-        textStringWithoutHTML = strip_tags(textStripWithHTML)
-        s = "".join(l for l in textStringWithoutHTML if l not in string.punctuation)
-        s = "".join([i for i in s if not i.isdigit()])
-        s = " ".join([i for i in s.lower().split() if i not in stop])
-        s = nltk.word_tokenize(s)
-        sent_pos_tags = nltk.pos_tag(s)
-        print "###############################"
-        for i in sent_pos_tags:
-            print i[1]
-            print "==========="
-        # print nltk.pos_tag(str(s))
-        # s = " ".join([i for i in ])
+        lemma_words = []
+        if article['textStrip'] != "":
+            if len(article['textStrip'].split()) >5:
+                textStripWithHTML = article['textStrip']
+                textStringWithoutHTML = strip_tags(textStripWithHTML)
+                s = "".join(l for l in textStringWithoutHTML if l not in string.punctuation)
+                s = "".join([i for i in s if not i.isdigit()])
+                s = " ".join([i for i in s.lower().split() if i not in stop])
+                s = nltk.word_tokenize(s)
+                sent_pos_tags = nltk.pos_tag(s)
 
-        # print extract_ner(s)
 
-    # output.close()
-    # logger.info("Finished Saved"+str(i)+" articles")
+                for i in sent_pos_tags:
+                    if str(penn_to_wn(i[1])) != "None":
+                        lemma_words.append(nltk.stem.WordNetLemmatizer().lemmatize(i[0], pos=penn_to_wn(i[1])))
+
+                output.write(getSent(lemma_words)+'\n')
+
+                    # print LineSentence(getSent(lemma_words))
+
+
+                c = c + 1
+                if (c % 1000 == 0):
+                    logger.info("Saved " + str(c) + " articles")
+
+    output.close()
+    logger.info("Finished Saved"+str(c)+" articles")
 
 
 if __name__ == '__main__':
